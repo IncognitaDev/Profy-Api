@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 
 import convertHourToMinutes from "../utils/convertHourToMinutes";
 import db from "../database/connection";
+import { DbRecord } from 'knex';
 
 interface ScheduleItem {
   week_day: number,
@@ -73,15 +74,21 @@ export default class ClassesController {
     const week_day = filters.week_day as string;
     const subject = filters.subject as string;
 
-    if ( !filters.week_day || !filters.subject || filters.hour) {
+    if (!filters.subject) {
       return response.status(400).json({
         error: "Missing filters to search classes"
       })
     }
 
-    const TimeInMinutes = convertHourToMinutes(time)
+    var TimeInMinutes :number
     
-    const classes = await db('classes')
+    if (filters.time){
+
+      TimeInMinutes = convertHourToMinutes(time)
+    }
+
+    if (filters.week_day && filters.time){
+      const classes = await db('classes')
       .whereExists(function() {
         this.select('class_schedule.*')
         .from('class_schedule')
@@ -90,12 +97,56 @@ export default class ClassesController {
         .whereRaw('`class_schedule` . `from` <= ?? ', [TimeInMinutes])
         .whereRaw('`class_schedule` . `to` > ?? ', [TimeInMinutes])
       })
-      .where('classes.subject', '=' , subject)
+      .where('classes.subject', '=', subject)
       .join('users', 'classes.user_id', '=', 'users.id')
-      .select(['classes.*', "users.*"])
+      .select(['classes.*', 'users.*'])
 
       return response.json(classes)
+    }
     
+    if (filters.week_day) {
+      const classes = await db('classes')
+      .whereExists(function() {
+        this.select('class_schedule.*')
+        .from('class_schedule')
+        .whereRaw('`class_schedule` . `class_id` = `classes`. `id` ')
+        .whereRaw('`class_schedule` . `week_day` = ??', [Number(week_day)])
+      })
+      .where('classes.subject', '=', subject)
+      .join('users', 'classes.user_id', '=', 'users.id')
+      .select(['classes.*', 'users.*'])
+
+      return response.json(classes)
+    }
+
+    if (filters.time) {
+      const classes = await db('classes')
+      .whereExists(function() {
+        this.select('class_schedule.*')
+        .from('class_schedule')
+        .whereRaw('`class_schedule` . `class_id` = `classes`. `id` ')
+        .whereRaw('`class_schedule` . `from` <= ?? ', [TimeInMinutes])
+        .whereRaw('`class_schedule` . `to` > ?? ', [TimeInMinutes])
+      })
+      .where('classes.subject', '=', subject)
+      .join('users', 'classes.user_id', '=', 'users.id')
+      .select(['classes.*', 'users.*'])
+
+      return response.json(classes)
+    }
+
+    const classes = await db('classes')
+      .whereExists(function() {
+        this.select('class_schedule.*')
+        .from('class_schedule')
+        .whereRaw('`class_schedule` . `class_id` = `classes`. `id` ')
+      })
+      .where('classes.subject', '=', subject)
+      .join('users', 'classes.user_id', '=', 'users.id')
+      .select(['classes.*', 'users.*'])
+
+    return response.json(classes)
+
   }
 
 }
